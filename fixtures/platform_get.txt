@@ -1,0 +1,1 @@
+OK battery_limit=off battery_calibration=off usb_charging=30 keyboard_timeout=off boot_sound=on lcd_override=off rear_logo=unsupported read_error_mask=0

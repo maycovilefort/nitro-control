@@ -22,8 +22,6 @@ chanfrados) que **substitui por completo a interface do ASense**. O daemon
 
 - Curva de ventoinha personalizada e modo manual. O daemon aceita
   `FAN MANUAL`, mas o usuário disse que Auto e Máximo bastam.
-- RPM das ventoinhas, real ou estimado. Mostra só a porcentagem de rotação
-  (decisão do usuário).
 - Efeitos de teclado além dos que o daemon aceita (onda, zoom etc.).
 - Histórico persistente do monitor.
 - Tuning da NVIDIA e outros recursos exclusivos do Predator PHN16-72.
@@ -53,9 +51,25 @@ chanfrados) que **substitui por completo a interface do ASense**. O daemon
 - O formato exato das respostas de `HARDWARE GET`, `PLATFORM GET` e `CAPS` é
   capturado com o daemon real na primeira tarefa de implementação e vira
   fixture dos testes.
-- Leitura do ASense neste modelo: perfil ok, porcentagem das ventoinhas ok,
-  RPM e temperaturas não disponíveis.
-- Sensores fora do ASense:
+- `DIAG PASSIVE` é o único comando de leitura de estado. Ele devolve um JSON
+  (~2,8 KB) com `profile.current.value.profile` (eco, quiet, balanced,
+  performance ou turbo) e `fans.channels[].mode.value` (auto, manual ou
+  maximum). O campo `setpoint` das ventoinhas **não é** a rotação real: é o
+  valor guardado para o modo manual. Não há leitura do estado da iluminação;
+  o app é a fonte de verdade da iluminação que ele aplica. Exemplos reais
+  ficam em `fixtures/`.
+- `acer_wmi` carregado com `predator_v4=1` (em
+  `/etc/modprobe.d/acer-wmi-predator.conf`, já aplicado) expõe:
+  - hwmon `acer`: `fan1_input` (ventoinha da CPU) e `fan2_input` (ventoinha
+    da GPU) com **RPM real**, ~4000 em Auto e ~7050 no Máximo;
+    `temp1_input` (CPU), `temp2_input` (GPU, 0 quando a GPU dorme) e
+    `temp3_input` (sistema);
+  - `/sys/firmware/acpi/platform_profile`, legível por qualquer usuário, com
+    o token do perfil atual (`low-power`, `quiet`, `balanced`,
+    `balanced-performance` ou `performance`). É a leitura barata do modo,
+    feita a cada 1 s. O modo de energia do GNOME também altera esse valor.
+- Sensores:
+  - ventoinhas: hwmon `acer` `fan1_input` e `fan2_input` (RPM);
   - CPU: hwmon `coretemp`, `temp1_input`, pacote;
   - sistema: hwmon `acpitz`;
   - SSD: hwmon `nvme`;
@@ -88,7 +102,9 @@ fala com o socket nem com o `/sys`.
 
 - Sensores: a cada 1 s com a janela visível e a cada 2 s com ela escondida
   (só o ícone consome).
-- Estado do ASense: `HARDWARE GET` a cada 2 s.
+- Modo: `/sys/firmware/acpi/platform_profile` a cada 1 s.
+- Modo da ventoinha (Auto/Máximo): `DIAG PASSIVE` a cada 3 s e logo após cada
+  comando `FAN`.
 - Eventos para a interface só quando algo muda, e só com a janela visível.
 
 ## 4. Fluxo de dados
@@ -99,7 +115,7 @@ fala com o socket nem com o `/sys`.
 3. O `state` detecta a mudança de modo e publica `mode-changed`.
 4. A interface troca a paleta (transição de cerca de 0,9 s) e roda a animação
    de troca. O `automation` aplica a cor do modo no teclado.
-5. Uma mudança feita fora do app entra pelo ciclo de 2 s e segue os passos 3
+5. Uma mudança feita fora do app entra pelo ciclo de 1 s e segue os passos 3
    e 4 do mesmo jeito.
 
 A interface só reflete o que o hardware confirmou: não há atualização otimista.
@@ -138,7 +154,8 @@ brilho mais forte e a animação dura ~1,6 s. A animação respeita
 ### Ventoinhas
 
 Duas hélices em SVG (CPU e GPU) que giram mais rápido quanto maior a
-porcentagem, com o número em % e uma barra.
+rotação, com o **RPM real** em destaque (ex.: `5674 RPM`) e uma barra que vai
+de 0 a 7050 RPM (o máximo medido).
 
 ## 6. Abas
 
@@ -153,7 +170,7 @@ porcentagem, com o número em % e uma barra.
   SSD).
 
 **Desempenho**: os 5 modos em cartões grandes na cor de cada um, as duas
-hélices com % e os botões Auto e Máximo.
+hélices com RPM real e os botões Auto e Máximo.
 
 **Teclado**
 - efeito: Desligado, Estático, Respiração ou Neon;
@@ -164,7 +181,7 @@ hélices com % e os botões Auto e Máximo.
 - editor da paleta dos 5 modos, que vale para a janela e para o teclado.
 
 **Monitor**: gráficos dos últimos 5 minutos (temperatura de CPU e GPU, uso de
-CPU e GPU, energia da GPU e % das ventoinhas). O histórico fica numa fila
+CPU e GPU, energia da GPU e RPM das ventoinhas). O histórico fica numa fila
 circular em memória.
 
 **Sistema**
