@@ -1,3 +1,6 @@
+pub mod asense;
+pub mod mode;
+
 use tauri::Manager;
 
 pub fn run() {
