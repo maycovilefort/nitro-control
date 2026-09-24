@@ -1,0 +1,20 @@
+.rot { transform-origin: 50% 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 10;
+  background: linear-gradient(100deg, transparent 30%, var(--glow) 48%, rgba(255,255,255,.75) 50%, var(--glow) 52%, transparent 70%); background-size: 250% 100%; }
+.banner { position: fixed; left: 0; right: 0; top: 40%; text-align: center; font-size: 56px; font-weight: 900; letter-spacing: .35em;
+  color: #fff; text-shadow: 0 0 18px var(--r), 0 0 40px var(--r); opacity: 0; pointer-events: none; z-index: 11; }
+body.sw .flash { animation: sweep .9s ease-out; }
+body.sw .banner { animation: ban 1.3s ease-out; }
+body.sw .pn { animation: pulse 1.1s ease-out; }
+body.sw[data-mode="turbo"] .banner { animation-duration: 1.6s; font-size: 68px; text-shadow: 0 0 22px var(--r), 0 0 50px var(--r2), 0 0 90px var(--r); }
+body[data-mode="turbo"] .curmode { text-shadow: 0 0 16px var(--r), 0 0 32px var(--r2); }
+@keyframes sweep { 0% { opacity: 1; background-position: 120% 0; } 100% { opacity: 0; background-position: -40% 0; } }
+@keyframes ban { 0% { opacity: 0; transform: scale(1.6); } 20% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes pulse { 25% { filter: brightness(1.6); } 100% { filter: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  body.sw .flash, body.sw .banner, body.sw .pn { animation: none; }
+  .rot { animation: none; }
+}

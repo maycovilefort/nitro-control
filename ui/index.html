@@ -1,3 +1,36 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Nitro Control</title></head>
-<body style="background:#0a0605;color:#fff;font-family:sans-serif">Nitro Control — esqueleto</body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Nitro Control</title>
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/anim.css">
+</head>
+<body>
+  <header class="top" data-tauri-drag-region>
+    <div class="logo" data-tauri-drag-region></div>
+    <nav id="tabs">
+      <button data-tab="home" class="on">Início</button>
+      <button data-tab="perf">Desempenho</button>
+      <button data-tab="keyboard">Teclado</button>
+      <button data-tab="monitor">Monitor</button>
+      <button data-tab="system">Sistema</button>
+    </nav>
+    <div class="sp" data-tauri-drag-region></div>
+    <div id="conn" class="conn"></div>
+    <button class="win" id="btn-min" title="Minimizar">—</button>
+    <button class="win" id="btn-close" title="Fechar (continua na barra)">✕</button>
+  </header>
+  <main>
+    <section id="tab-home" class="tab on"></section>
+    <section id="tab-perf" class="tab"></section>
+    <section id="tab-keyboard" class="tab"></section>
+    <section id="tab-monitor" class="tab"></section>
+    <section id="tab-system" class="tab"></section>
+  </main>
+  <div id="flash" class="flash"></div>
+  <div id="banner" class="banner"></div>
+  <div id="toasts"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
