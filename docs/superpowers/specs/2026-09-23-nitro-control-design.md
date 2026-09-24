@@ -36,10 +36,10 @@ chanfrados) que **substitui por completo a interface do ASense**. O daemon
 - Comandos usados:
   - descoberta: `PING`, `CAPS` (JSON de capacidades), `HARDWARE GET`,
     `PLATFORM GET`;
-  - perfil: `PROFILE <token-de-CAPS>`. O probe listou os tokens `low-power`
-    (eco), `quiet`, `balanced`, `balanced-performance` (desempenho) e
-    `performance` (turbo). Os tokens valem como vierem do `CAPS`, não
-    ficam fixos no código;
+  - perfil: `PROFILE <token-de-CAPS>`. Os tokens são `low-power` (eco),
+    `quiet`, `balanced`, `balanced-performance` (desempenho) e
+    `performance` (turbo). O mapeamento fica numa tabela única no código
+    (`mode.rs`), igual aos tokens do `platform_profile` do kernel;
   - ventoinha: `FAN AUTO`, `FAN MAXIMUM`;
   - iluminação: `LIGHTING APPLY <device-id> <OFF|STATIC|BREATHING|NEON>
     <brilho 0..100> <velocidade 0..9> <RRGGBB> <-|RRGGBB,...>` e
@@ -48,9 +48,9 @@ chanfrados) que **substitui por completo a interface do ASense**. O daemon
   - plataforma: `PLATFORM <BATTERY_LIMIT|KEYBOARD_TIMEOUT|BOOT_SOUND|LCD_OVERRIDE> <ON|OFF>`,
     `PLATFORM BATTERY_CALIBRATION <START|STOP>` e
     `PLATFORM USB_CHARGING <0|10|20|30>`.
-- O formato exato das respostas de `HARDWARE GET`, `PLATFORM GET` e `CAPS` é
-  capturado com o daemon real na primeira tarefa de implementação e vira
-  fixture dos testes.
+- As respostas reais de `CAPS`, `PLATFORM GET` e `DIAG PASSIVE` foram
+  capturadas em `fixtures/`. `PLATFORM GET` responde
+  `OK battery_limit=off battery_calibration=off usb_charging=30 keyboard_timeout=off boot_sound=on lcd_override=off rear_logo=unsupported read_error_mask=0`.
 - `DIAG PASSIVE` é o único comando de leitura de estado. Ele devolve um JSON
   (~2,8 KB) com `profile.current.value.profile` (eco, quiet, balanced,
   performance ou turbo) e `fans.channels[].mode.value` (auto, manual ou
@@ -73,8 +73,9 @@ chanfrados) que **substitui por completo a interface do ASense**. O daemon
   - CPU: hwmon `coretemp`, `temp1_input`, pacote;
   - sistema: hwmon `acpitz`;
   - SSD: hwmon `nvme`;
-  - GPU: NVIDIA (temperatura, uso, frequência e energia) via NVML, com
-    `nvidia-smi` como alternativa. Antes de ler, o app confere
+  - GPU: NVIDIA (temperatura, uso, frequência e energia) via
+    `nvidia-smi --query-gpu=temperature.gpu,utilization.gpu,clocks.gr,power.draw --format=csv,noheader,nounits`
+    (~35 ms por chamada). Antes de ler, o app confere
     `/sys/bus/pci/devices/<gpu>/power/runtime_status`: se não for `active`,
     mostra "em repouso" e não acorda a GPU;
   - uso de CPU: `/proc/stat`; RAM: `/proc/meminfo`.
@@ -237,8 +238,9 @@ O log vai para o journal (stderr) com nível configurável por `RUST_LOG`.
    - remove `~/.config/autostart/asense_turbo_fans.desktop` e
      `rgb_config_acer_gkbbl_0.desktop`;
    - impede que a interface do ASense abra no login;
-   - aponta o atalho customizado do GNOME (`.../custom-keybindings/asense/`)
-     para `nitro-control --toggle`;
+   - aponta o atalho customizado do GNOME (`.../custom-keybindings/asense/`,
+     tecla `XF86Launch1`, a tecla NitroSense do notebook) para
+     `nitro-control --toggle`;
    - instala o autostart do `nitro-control`.
 4. `nitro-control --toggle` mostra ou esconde a janela da instância que já
    está rodando (instância única).
