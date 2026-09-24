@@ -1,4 +1,6 @@
 pub mod asense;
+pub mod autostart;
+pub mod config;
 pub mod mode;
 pub mod sensors;
 
