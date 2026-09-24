@@ -93,3 +93,9 @@ input[type=color] { width: 44px; height: 28px; border: 1px solid var(--ln); back
 .mode-card .name { font-size: 20px; font-weight: 800; letter-spacing: .06em; margin-bottom: 6px; }
 .mode-card.on { border-color: var(--r); box-shadow: inset 0 0 30px var(--glow); }
 body.offline .mode-card { opacity: .4; pointer-events: none; }
+
+.kbtab { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.kbtab > .pn:last-child { grid-column: span 2; }
+.zones { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.zone { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--mut); }
+.zone input[type=color] { width: 100%; height: 40px; }

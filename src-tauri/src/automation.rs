@@ -15,7 +15,8 @@ pub fn lighting_commands(device: &str, kb: &KeyboardConfig, palette: &Palette, m
     } else {
         (hex(&kb.zones[0]), kb.zones.iter().map(|z| hex(z)).collect::<Vec<_>>().join(","))
     };
-    let speed = if kb.effect == Effect::Static { 0 } else { kb.speed.min(9) };
+    // O daemon só aceita velocidade no Neon; estático e respiração exigem 0.
+    let speed = if kb.effect == Effect::Neon { kb.speed.min(9) } else { 0 };
     vec![
         format!("LIGHTING POWER {device} ON"),
         format!("LIGHTING APPLY {device} {} {} {speed} {primary} {zones}", kb.effect.token(), kb.brightness.min(100)),
@@ -50,7 +51,16 @@ mod tests {
     fn manual_zones_are_listed() {
         let kb = KeyboardConfig { follow_mode: false, effect: Effect::Breathing, speed: 4, brightness: 60, ..Default::default() };
         let cmds = lighting_commands(DEV, &kb, &Palette::default(), Some(Mode::Eco));
-        assert_eq!(cmds[1], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 60 4 ff2a1a ff2a1a,ff2a1a,ff8a1f,ff8a1f");
+        assert_eq!(cmds[1], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 60 0 ff2a1a ff2a1a,ff2a1a,ff8a1f,ff8a1f");
+    }
+
+    #[test]
+    fn breathing_forces_speed_zero_neon_keeps_it() {
+        // daemon real: "static/breathing modes require speed=0 and direction=0"
+        let kb = KeyboardConfig { effect: Effect::Breathing, speed: 5, ..Default::default() };
+        assert_eq!(lighting_commands(DEV, &kb, &Palette::default(), Some(Mode::Turbo))[1], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -");
+        let kb = KeyboardConfig { effect: Effect::Neon, speed: 5, ..Default::default() };
+        assert_eq!(lighting_commands(DEV, &kb, &Palette::default(), Some(Mode::Turbo))[1], "LIGHTING APPLY zoned-wmi-keyboard NEON 100 5 b026ff -");
     }
 
     #[test]
