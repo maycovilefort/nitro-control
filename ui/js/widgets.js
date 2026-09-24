@@ -63,6 +63,6 @@ export function setChart(el, samples, min, max, unit = '') {
   el.querySelectorAll('path').forEach((p) => {
     p.setAttribute('d', sparkPath(samples.map((s) => s[p.dataset.key] ?? null), 300, 80, min, max));
   });
-  el.querySelector('.max').textContent = `${max}${unit}`;
-  el.querySelector('.min').textContent = `${min}${unit}`;
+  el.querySelector('.max').textContent = `escala ${min}–${max}${unit}`;
+  el.querySelector('.min').textContent = 'últimos 5 min';
 }
