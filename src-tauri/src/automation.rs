@@ -40,10 +40,7 @@ pub fn lighting_plan(device: &str, kb: &KeyboardConfig, palette: &Palette, mode:
         format!("0,0,{b},0,{r},{g},{bl}")
     });
     LightingPlan {
-        commands: vec![
-            format!("LIGHTING POWER {device} ON"),
-            format!("LIGHTING APPLY {device} {mode_token} {b} {speed} {} -", hex(&color)),
-        ],
+        commands: vec![format!("LIGHTING APPLY {device} {mode_token} {b} {speed} {} -", hex(&color))],
         static_effect,
     }
 }
@@ -71,10 +68,9 @@ mod tests {
         // Neste modelo o daemon não consegue gravar zonas (STATIC falha); a respiração
         // pinta as 4 zonas e o efeito estático é gravado direto no driver.
         let p = plan(&KeyboardConfig::default(), Some(Mode::Turbo));
-        assert_eq!(p.commands, vec![
-            "LIGHTING POWER zoned-wmi-keyboard ON".to_string(),
-            "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -".to_string(),
-        ]);
+        // Sem "LIGHTING POWER ON": o APPLY já liga o teclado, e o POWER ON é
+        // recusado pelo driver depois que o estático foi gravado direto.
+        assert_eq!(p.commands, vec!["LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -".to_string()]);
         assert_eq!(p.static_effect.as_deref(), Some("0,0,100,0,176,38,255"));
     }
 
@@ -82,7 +78,7 @@ mod tests {
     fn manual_color_uses_first_zone() {
         let kb = KeyboardConfig { follow_mode: false, brightness: 60, ..Default::default() };
         let p = plan(&kb, Some(Mode::Eco));
-        assert_eq!(p.commands[1], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 60 0 ff2a1a -");
+        assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 60 0 ff2a1a -");
         assert_eq!(p.static_effect.as_deref(), Some("0,0,60,0,255,42,26"));
     }
 
@@ -90,7 +86,7 @@ mod tests {
     fn breathing_forces_speed_zero_and_has_no_static_step() {
         let kb = KeyboardConfig { effect: Effect::Breathing, speed: 5, ..Default::default() };
         let p = plan(&kb, Some(Mode::Turbo));
-        assert_eq!(p.commands[1], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -");
+        assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -");
         assert_eq!(p.static_effect, None);
     }
 
@@ -98,7 +94,7 @@ mod tests {
     fn neon_keeps_speed() {
         let kb = KeyboardConfig { effect: Effect::Neon, speed: 5, ..Default::default() };
         let p = plan(&kb, Some(Mode::Turbo));
-        assert_eq!(p.commands[1], "LIGHTING APPLY zoned-wmi-keyboard NEON 100 5 b026ff -");
+        assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard NEON 100 5 b026ff -");
         assert_eq!(p.static_effect, None);
     }
 
