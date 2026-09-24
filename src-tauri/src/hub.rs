@@ -1,10 +1,11 @@
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::asense::protocol::{parse_caps_device, parse_diag, parse_platform};
 use crate::asense::{Asense, AsenseError};
-use crate::automation::{lighting_commands, login_commands};
+use crate::automation::{lighting_plan, login_commands};
 use crate::config::{Config, FanChoice};
 use crate::mode::Mode;
 use crate::sensors::Sensors;
@@ -37,6 +38,8 @@ pub struct Hub<A: Asense> {
     last_diag: Option<Instant>,
     last_connect_try: Option<Instant>,
     login_applied: bool,
+    effect_path: Option<PathBuf>,
+    effect_warned: bool,
 }
 
 impl<A: Asense> Hub<A> {
@@ -53,7 +56,15 @@ impl<A: Asense> Hub<A> {
             last_diag: None,
             last_connect_try: None,
             login_applied: false,
+            effect_path: None,
+            effect_warned: false,
         }
+    }
+
+    /// Arquivo `asense_rgb/effect`, usado para fixar o efeito estático.
+    pub fn with_effect_path(mut self, path: Option<PathBuf>) -> Self {
+        self.effect_path = path;
+        self
     }
 
     pub fn snapshot(&self) -> &Snapshot {
@@ -135,12 +146,21 @@ impl<A: Asense> Hub<A> {
         if !self.asense.connected() {
             return Ok(());
         }
-        let cmds = {
+        let plan = {
             let cfg = self.cfg.lock().unwrap();
-            lighting_commands(&self.device, &cfg.keyboard, &cfg.palette, self.snap.mode)
+            lighting_plan(&self.device, &cfg.keyboard, &cfg.palette, self.snap.mode)
         };
-        for c in cmds {
-            self.asense.request(&c).map_err(|e| format!("Teclado: {e}"))?;
+        for c in &plan.commands {
+            self.asense.request(c).map_err(|e| format!("Teclado: {e}"))?;
+        }
+        if let (Some(line), Some(path)) = (plan.static_effect, &self.effect_path) {
+            // Sem permissão no driver o teclado fica na respiração, na cor certa.
+            if let Err(e) = std::fs::write(path, &line) {
+                if !self.effect_warned {
+                    self.effect_warned = true;
+                    log::warn!("não consegui fixar o estático em {}: {e}", path.display());
+                }
+            }
         }
         Ok(())
     }
@@ -294,7 +314,7 @@ mod tests {
         assert_eq!(hub.snapshot().connection, Connection::Connected);
         let pos = |s: &str| c.iter().position(|x| x == s).unwrap_or_else(|| panic!("faltou {s} em {c:?}"));
         assert!(pos("PROFILE performance") < pos("FAN AUTO"));
-        assert!(pos("FAN AUTO") < pos("LIGHTING APPLY zoned-wmi-keyboard STATIC 100 0 ff8a1f -"), "cor do Equilibrado (modo lido do sysfs)");
+        assert!(pos("FAN AUTO") < pos("LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 ff8a1f -"), "cor do Equilibrado (modo lido do sysfs)");
         assert_eq!(hub.snapshot().platform.as_ref().unwrap().usb_charging, Some(30));
     }
 
@@ -308,7 +328,7 @@ mod tests {
         set_profile_file(r.dir.path(), "performance\n");
         hub.tick(t0 + TICK);
         assert!(r.events.lock().unwrap().contains(&Event::ModeChanged { from: Some(Mode::Balanced), to: Mode::Turbo }));
-        assert!(cmds(&r).contains(&"LIGHTING APPLY zoned-wmi-keyboard STATIC 100 0 b026ff -".to_string()));
+        assert!(cmds(&r).contains(&"LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -".to_string()));
     }
 
     #[test]
@@ -380,6 +400,24 @@ mod tests {
         hub.tick(Instant::now());
         assert!(hub.handle(Request::SetProfile(Mode::Eco)).is_err());
         assert!(hub.handle(Request::ReapplyLighting).is_ok());
+    }
+
+    #[test]
+    fn static_effect_is_committed_to_driver_file() {
+        let (r, hub) = rig(Fake::default());
+        let effect = r.dir.path().join("effect");
+        std::fs::write(&effect, "").unwrap();
+        let mut hub = hub.with_effect_path(Some(effect.clone()));
+        hub.tick(Instant::now());
+        assert_eq!(std::fs::read_to_string(&effect).unwrap(), "0,0,100,0,255,138,31", "estático laranja do Equilibrado");
+    }
+
+    #[test]
+    fn unwritable_driver_file_falls_back_without_toast() {
+        let (r, hub) = rig(Fake::default());
+        let mut hub = hub.with_effect_path(Some(r.dir.path().join("nao-existe/effect")));
+        hub.tick(Instant::now());
+        assert!(!r.events.lock().unwrap().iter().any(|e| matches!(e, Event::Toast(_))));
     }
 
     #[test]

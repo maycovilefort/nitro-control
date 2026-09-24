@@ -1,0 +1,3 @@
+# Nitro Control: libera ao grupo plugdev (usuário do desktop) só o efeito do teclado
+# do asense_rgb, para fixar o modo estático (o daemon não consegue neste modelo).
+ACTION=="add|bind|change", SUBSYSTEM=="wmi", KERNEL=="7A4DDFE7-5B5D-40B4-8595-4408E0CC7F56", DRIVER=="asense_rgb", RUN+="/bin/sh -c 'chgrp plugdev /sys%p/asense_rgb/effect && chmod 0664 /sys%p/asense_rgb/effect'"

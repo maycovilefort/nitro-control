@@ -21,6 +21,9 @@ use hub::{Hub, Request};
 use sensors::Sensors;
 use state::{Event, History, Snapshot};
 
+/// Efeito do teclado no driver asense_rgb (liberado pela regra udev do pacote).
+const KBD_EFFECT: &str = "/sys/bus/wmi/devices/7A4DDFE7-5B5D-40B4-8595-4408E0CC7F56/asense_rgb/effect";
+
 fn set_visible(app: &AppHandle, v: bool) {
     if let Some(s) = app.try_state::<AppState>() {
         s.visible.store(v, Ordering::Relaxed);
@@ -127,7 +130,8 @@ pub fn run() {
                 cfg.clone(),
                 history.clone(),
                 emit,
-            );
+            )
+            .with_effect_path(Some(KBD_EFFECT.into()).filter(|p: &std::path::PathBuf| p.exists()));
             let shared2 = shared.clone();
             std::thread::Builder::new().name("hub".into()).spawn(move || hub::run(hub, rx, shared2))?;
 

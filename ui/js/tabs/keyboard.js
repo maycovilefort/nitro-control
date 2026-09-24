@@ -45,11 +45,13 @@ export function mount(root, ctx) {
     draft.keyboard.followMode = !draft.keyboard.followMode; scheduleSave(ctx); update(ctx);
   });
 
-  const zones = panel('Cores por zona (com "Acompanhar" desligado)');
-  zones.querySelector('.body').innerHTML = '<div class="zones">' +
-    [0, 1, 2, 3].map((i) => `<label class="zone"><input type="color" data-zone="${i}"><span>Zona ${i + 1}</span></label>`).join('') + '</div>';
-  zones.querySelectorAll('[data-zone]').forEach((inp) =>
-    inp.addEventListener('input', () => { draft.keyboard.zones[Number(inp.dataset.zone)] = inp.value; scheduleSave(ctx); }));
+  // O firmware deste modelo aceita só uma cor global para o teclado inteiro.
+  const zones = panel('Cor fixa (com "Acompanhar" desligado)');
+  zones.querySelector('.body').innerHTML = '<label class="zone"><input type="color" data-fixed><span>Teclado inteiro</span></label>';
+  zones.querySelector('[data-fixed]').addEventListener('input', (e) => {
+    draft.keyboard.zones = Array(4).fill(e.target.value);
+    scheduleSave(ctx);
+  });
   el.zonesPanel = zones;
 
   const pal = panel('Paleta dos modos (janela e teclado)');
@@ -87,9 +89,8 @@ export function update({ store }) {
   el.root.querySelector('[data-k=followMode]').classList.toggle('on', k.followMode);
   el.zonesPanel.style.opacity = k.followMode ? 0.4 : 1;
   el.zonesPanel.style.pointerEvents = k.followMode ? 'none' : 'auto';
-  el.root.querySelectorAll('[data-zone]').forEach((inp) => {
-    if (document.activeElement !== inp) inp.value = k.zones[Number(inp.dataset.zone)];
-  });
+  const fixed = el.root.querySelector('[data-fixed]');
+  if (document.activeElement !== fixed) fixed.value = k.zones[0];
   el.root.querySelectorAll('input[data-mode]').forEach((inp) => {
     if (document.activeElement !== inp) inp.value = draft.palette[inp.dataset.mode][inp.dataset.which];
   });
