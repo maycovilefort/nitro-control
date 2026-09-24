@@ -1,68 +1,124 @@
-import { fanSpinSeconds, fmtRpm, pct, sparkPath, FAN_MAX_RPM } from './logic.js';
+import { fanArcDash, fanSpinSeconds, sparkPath } from './logic.js';
 
-const h = (html) => {
+export const h = (html) => {
   const t = document.createElement('template');
   t.innerHTML = html.trim();
   return t.content.firstElementChild;
 };
 
-export function panel(title) {
-  return h(`<div class="pn"><div class="ttl">${title}</div><div class="body"></div></div>`);
+/** Botões segmentados; `cls` acrescenta variações (sm, xs, grid4, needs-daemon). */
+export function seg(items, onPick, cls = '') {
+  const el = h(`<div class="seg ${cls}"></div>`);
+  for (const it of items) {
+    const b = h(`<button data-id="${it.id}">${it.label}</button>`);
+    b.addEventListener('click', () => onPick(it.id));
+    el.append(b);
+  }
+  return el;
 }
 
-export function ring(label, big = false) {
-  return h(`<div class="ring ${big ? 'big' : 'sm'}"><div><span class="u ring-top"></span><span class="val">—</span><span class="u lbl">${label}</span></div></div>`);
+export function setSeg(el, activeId) {
+  el.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === activeId));
 }
 
-export function setRing(el, value, max, text, top = '') {
-  el.style.setProperty('--p', `${pct(value, max) * 0.75}%`);
-  el.querySelector('.val').textContent = text;
-  el.querySelector('.ring-top').textContent = top;
+export function sw(onToggle, cls = '') {
+  const b = h(`<button class="switch ${cls}"></button>`);
+  b.addEventListener('click', () => onToggle(!b.classList.contains('on')));
+  return b;
 }
 
-const BLADE = 'M50 50 C44 30 50 12 62 10 C60 26 58 40 50 50Z';
-export function fan(label) {
-  const blades = [0, 72, 144, 216, 288].map((a) => `<path d="${BLADE}" transform="rotate(${a} 50 50)"/>`).join('');
-  return h(`<div class="fan">
-    <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="fan-ring"/>
-      <g class="rot"><g class="blades">${blades}</g><circle cx="50" cy="50" r="9" class="hub"/></g></svg>
-    <div class="ttl">${label}</div><div class="rpm">—</div><div class="bar"><div></div></div></div>`);
+export const setSw = (el, on) => el.classList.toggle('on', !!on);
+
+const BLADE = 'M57.1 46.3 C58 36 70 26 82 21.9 Q88 25 92.7 30.6 C82 36 72 42 62.9 46.3 Z';
+const blades = (extra) =>
+  Array.from({ length: 11 }, (_, i) => `<path d="${BLADE}" transform="rotate(${((i * 360) / 11).toFixed(2)} 60 60)" ${extra}/>`).join('');
+
+/** Ventoinha HUD: 11 pás com rastro, cubo metálico e arco de RPM. O rotor é girado por `spinFans`. */
+export function fan(key) {
+  const el = h(`<div class="fanbox">
+    <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    <svg viewBox="0 0 120 120">
+      <defs>
+        <radialGradient id="glow${key}" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" class="f-stop" stop-opacity=".34"/><stop offset="70%" class="f-stop" stop-opacity=".06"/><stop offset="100%" class="f-stop" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="blade${key}" gradientUnits="userSpaceOnUse" cx="60" cy="60" r="46">
+          <stop offset="30%" class="f-stop"/><stop offset="100%" class="f-stop2"/>
+        </radialGradient>
+        <radialGradient id="hub${key}" cx="38%" cy="34%" r="72%">
+          <stop offset="0%" stop-color="#4a4753"/><stop offset="60%" stop-color="#16151b"/><stop offset="100%" stop-color="#08070a"/>
+        </radialGradient>
+      </defs>
+      <circle cx="60" cy="60" r="59" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      <circle cx="60" cy="60" r="55" transform="rotate(135 60 60)" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5" stroke-dasharray="259.2 345.6"/>
+      <circle class="f-arc" cx="60" cy="60" r="55" transform="rotate(135 60 60)" style="stroke-dasharray:0 345.6"/>
+      <circle cx="60" cy="60" r="50" fill="#08070a" stroke="rgba(255,255,255,.09)" stroke-width="1"/>
+      <circle cx="60" cy="60" r="47" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="2.5" stroke-dasharray="1 3.1"/>
+      <circle cx="60" cy="60" r="45" fill="url(#glow${key})"/>
+      <g class="rotor">
+        <g transform="rotate(-18 60 60)" style="opacity:.25;filter:blur(1.4px)">${blades(`fill="url(#blade${key})"`)}</g>
+        <g>${blades(`fill="url(#blade${key})" stroke="#08070a" stroke-width=".6"`)}</g>
+        <circle class="f-hub" cx="60" cy="60" r="15" fill="url(#hub${key})"/>
+        <circle cx="60" cy="60" r="10" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1" stroke-dasharray="2 2.2"/>
+      </g>
+      <circle class="f-axle" cx="60" cy="60" r="3"/>
+    </svg>
+  </div>`);
+  el._rotor = el.querySelector('.rotor');
+  el._arc = el.querySelector('.f-arc');
+  el._angle = 0;
+  el._rpm = null;
+  FANS.add(el);
+  return el;
 }
 
 export function setFan(el, rpm) {
-  const s = fanSpinSeconds(rpm);
-  const rot = el.querySelector('.rot');
-  rot.style.animationDuration = s ? `${s}s` : '0s';
-  rot.style.animationPlayState = s ? 'running' : 'paused';
-  el.querySelector('.rpm').textContent = fmtRpm(rpm);
-  el.querySelector('.bar > div').style.width = `${pct(rpm, FAN_MAX_RPM)}%`;
+  el._rpm = rpm;
+  el._arc.style.strokeDasharray = fanArcDash(rpm);
 }
 
-export function chips(items, onPick) {
-  const wrap = h('<div class="chips"></div>');
-  for (const it of items) {
-    const b = h(`<button class="chip" data-id="${it.id}">${it.label}</button>`);
-    b.addEventListener('click', () => onPick(it.id));
-    wrap.appendChild(b);
+const FANS = new Set();
+let lastT = null;
+let rafId = null;
+
+/**
+ * Gira os rotores quadro a quadro: a velocidade acompanha o RPM sem os saltos
+ * que trocar `animation-duration` causaria.
+ */
+export function spinFans(running) {
+  if (!running || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    lastT = null;
+    return;
   }
-  return wrap;
+  if (rafId) return;
+  const loop = (t) => {
+    const dt = lastT == null ? 0 : Math.min(0.1, (t - lastT) / 1000);
+    lastT = t;
+    for (const el of FANS) {
+      const s = fanSpinSeconds(el._rpm);
+      if (s) el._angle = (el._angle + (dt * 360) / s) % 360;
+      el._rotor.setAttribute('transform', `rotate(${el._angle.toFixed(2)} 60 60)`);
+    }
+    rafId = requestAnimationFrame(loop);
+  };
+  rafId = requestAnimationFrame(loop);
 }
 
-export function setChips(el, activeId) {
-  el.querySelectorAll('.chip').forEach((b) => b.classList.toggle('on', b.dataset.id === activeId));
+/** Linha de estatística com barra: retorna o elemento; atualize com `setStat`. */
+export function stat(label) {
+  return h(`<div class="stat"><div class="kv"><span>${label}</span><b>—</b></div><div class="bar"><div></div></div></div>`);
 }
 
-export function chart(title, series) {
-  const legend = series.map((s) => `<span style="color:${s.color}">■ ${s.label}</span>`).join(' ');
-  const paths = series.map((s) => `<path data-key="${s.key}" style="stroke:${s.color}"/>`).join('');
-  return h(`<div class="pn chart"><div class="ttl">${title} <span class="legend">${legend}</span></div>
-    <svg viewBox="0 0 300 80" preserveAspectRatio="none">${paths}</svg><div class="axis"><span class="max"></span><span class="min"></span></div></div>`);
+export function setStat(el, text, pctValue) {
+  el.querySelector('b').textContent = text;
+  el.querySelector('.bar > div').style.width = `${pctValue}%`;
 }
 
-export function setChart(el, samples, min, max, unit = '') {
-  el.querySelectorAll('path').forEach((p) => {
-    p.setAttribute('d', sparkPath(samples.map((s) => s[p.dataset.key] ?? null), 300, 80, min, max));
-  });
-  el.querySelector('.max').textContent = `escala ${min}–${max}${unit}`;
-  el.querySelector('.min').textContent = 'últimos 5 min';
+/** Área + linha de uma série (viewBox 0 0 w hgt). */
+export function setSpark(areaEl, lineEl, values, w, hgt, min, max) {
+  const d = sparkPath(values, w, hgt, min, max);
+  lineEl.setAttribute('d', d);
+  areaEl.setAttribute('d', d ? `${d} L${w},${hgt} L0,${hgt} Z` : '');
 }

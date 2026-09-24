@@ -1,16 +1,12 @@
 import { MODES, isHex } from '../logic.js';
-import { panel, chips, setChips } from '../widgets.js';
+import { h, seg, setSeg, sw, setSw } from '../widgets.js';
 
 const el = {};
 let draft = null;
 let saveTimer = null;
 
-const EFFECTS = [
-  { id: 'off', label: 'Desligado' },
-  { id: 'static', label: 'Estático' },
-  { id: 'breathing', label: 'Respiração' },
-  { id: 'neon', label: 'Neon' },
-];
+const FX = { off: 'Desligado', static: 'Estático', breathing: 'Respiração', neon: 'Neon' };
+const EFFECTS = Object.entries(FX).map(([id, label]) => ({ id, label }));
 
 const DEFAULT_PALETTE = {
   eco: { primary: '#22c55e', secondary: '#86efac' },
@@ -29,69 +25,79 @@ function scheduleSave(ctx) {
 }
 
 export function mount(root, ctx) {
-  root.innerHTML = '<div class="kbtab"></div>';
-  const wrap = root.firstElementChild;
+  const changed = () => { scheduleSave(ctx); update(ctx); };
+  root.innerHTML = `<div class="kbtab enter">
+    <div class="kbleft">
+      <div class="preview"><div class="label">PRÉVIA</div><div class="info"></div><div class="zones"><div></div><div></div><div></div><div></div></div></div>
+      <div>
+        <div class="palhead"><div class="label">PALETA DOS MODOS</div><button class="link" data-reset>Restaurar padrão</button></div>
+        <div class="palgrid"></div>
+      </div>
+    </div>
+    <div class="kbright">
+      <div class="kbrow fxrow"><div class="label">EFEITO</div></div>
+      <div class="kbrow"><div class="hd"><span>Brilho</span><span data-v="brightness"></span></div><input type="range" min="0" max="100" data-k="brightness"></div>
+      <div class="kbrow" data-row="speed"><div class="hd"><span>Velocidade (Neon)</span><span data-v="speed"></span></div><input type="range" min="0" max="9" data-k="speed"></div>
+      <div class="kbrow inline" data-row="follow"><span>Acompanhar a cor do modo</span></div>
+      <div class="kbrow inline fixrow"><span>Cor fixa<span class="sub">Teclado inteiro, com “Acompanhar” desligado</span></span>
+        <label class="fixed"><input type="color" class="swatch-in" data-fixed></label></div>
+    </div>
+  </div>`;
 
-  const fx = panel('Efeito');
-  el.fx = chips(EFFECTS, (id) => { draft.keyboard.effect = id; scheduleSave(ctx); update(ctx); });
-  fx.querySelector('.body').append(el.fx);
-  fx.querySelector('.body').insertAdjacentHTML('beforeend', `
-    <div class="field"><span>Brilho</span><span><input type="range" min="0" max="100" data-k="brightness"> <b data-v="brightness"></b></span></div>
-    <div class="field" data-row="speed"><span>Velocidade (Neon)</span><span><input type="range" min="0" max="9" data-k="speed"> <b data-v="speed"></b></span></div>
-    <div class="field"><span>Acompanhar a cor do modo</span><button class="switch" data-k="followMode"></button></div>`);
-  fx.querySelectorAll('input[type=range]').forEach((r) =>
-    r.addEventListener('input', () => { draft.keyboard[r.dataset.k] = Number(r.value); scheduleSave(ctx); update(ctx); }));
-  fx.querySelector('[data-k=followMode]').addEventListener('click', () => {
-    draft.keyboard.followMode = !draft.keyboard.followMode; scheduleSave(ctx); update(ctx);
-  });
+  el.preview = root.querySelector('.preview');
+  el.fx = seg(EFFECTS, (id) => { draft.keyboard.effect = id; changed(); }, 'grid4');
+  root.querySelector('.kbrow.fxrow').append(el.fx);
+  root.querySelectorAll('input[type=range]').forEach((r) =>
+    r.addEventListener('input', () => { draft.keyboard[r.dataset.k] = Number(r.value); changed(); }));
+  el.follow = sw((on) => { draft.keyboard.followMode = on; changed(); });
+  root.querySelector('[data-row=follow]').append(el.follow);
+  el.fixedRow = root.querySelector('.fixrow');
+  el.fixed = root.querySelector('[data-fixed]');
+  el.fixed.addEventListener('input', () => { draft.keyboard.zones = Array(4).fill(el.fixed.value); changed(); });
 
-  // O firmware deste modelo aceita só uma cor global para o teclado inteiro.
-  const zones = panel('Cor fixa (com "Acompanhar" desligado)');
-  zones.querySelector('.body').innerHTML = '<label class="zone"><input type="color" data-fixed><span>Teclado inteiro</span></label>';
-  zones.querySelector('[data-fixed]').addEventListener('input', (e) => {
-    draft.keyboard.zones = Array(4).fill(e.target.value);
-    scheduleSave(ctx);
-  });
-  el.zonesPanel = zones;
-
-  const pal = panel('Paleta dos modos (janela e teclado)');
-  pal.querySelector('.body').innerHTML = MODES.map((m) =>
-    `<div class="field"><span>${m.label}</span><span><input type="color" data-mode="${m.id}" data-which="primary"> <input type="color" data-mode="${m.id}" data-which="secondary"></span></div>`).join('') +
-    '<div style="margin-top:10px"><button class="chip" data-reset>Restaurar paleta padrão</button></div>';
-  pal.querySelectorAll('input[data-mode]').forEach((inp) =>
+  const grid = root.querySelector('.palgrid');
+  for (const m of MODES) {
+    const col = h(`<div class="palcol"><div class="palblock">
+        <label class="p"><input type="color" class="swatch-in" data-mode="${m.id}" data-which="primary"></label>
+        <label class="s"><input type="color" class="swatch-in" data-mode="${m.id}" data-which="secondary"></label>
+      </div><div class="nm">${m.label}</div></div>`);
+    grid.append(col);
+  }
+  grid.querySelectorAll('input[data-mode]').forEach((inp) =>
     inp.addEventListener('input', () => {
       if (!isHex(inp.value)) return;
       draft.palette[inp.dataset.mode][inp.dataset.which] = inp.value;
-      scheduleSave(ctx);
+      changed();
     }));
-  pal.querySelector('[data-reset]').addEventListener('click', () => {
-    draft.palette = structuredClone(DEFAULT_PALETTE);
-    scheduleSave(ctx);
-    update(ctx);
-  });
-
-  wrap.append(fx, zones, pal);
+  root.querySelector('[data-reset]').addEventListener('click', () => { draft.palette = structuredClone(DEFAULT_PALETTE); changed(); });
   el.root = root;
 }
 
 export function update({ store }) {
   if (!draft || !saveTimer) draft = structuredClone(store.config);
   const k = draft.keyboard;
-  setChips(el.fx, k.effect);
+  const mode = store.snap?.mode;
+  setSeg(el.fx, k.effect);
   for (const key of ['brightness', 'speed']) {
     const r = el.root.querySelector(`input[data-k=${key}]`);
     if (document.activeElement !== r) r.value = k[key];
     el.root.querySelector(`[data-v=${key}]`).textContent = k[key];
   }
-  const speedRow = el.root.querySelector('[data-row=speed]');
-  speedRow.style.opacity = k.effect === 'neon' ? 1 : 0.35;
-  speedRow.style.pointerEvents = k.effect === 'neon' ? 'auto' : 'none';
-  el.root.querySelector('[data-k=followMode]').classList.toggle('on', k.followMode);
-  el.zonesPanel.style.opacity = k.followMode ? 0.4 : 1;
-  el.zonesPanel.style.pointerEvents = k.followMode ? 'none' : 'auto';
-  const fixed = el.root.querySelector('[data-fixed]');
-  if (document.activeElement !== fixed) fixed.value = k.zones[0];
+  el.root.querySelector('[data-row=speed]').classList.toggle('dimmed', k.effect !== 'neon');
+  setSw(el.follow, k.followMode);
+  el.fixedRow.classList.toggle('dimmed', k.followMode);
+  if (document.activeElement !== el.fixed) el.fixed.value = k.zones[0];
+  el.fixed.parentElement.style.background = k.zones[0];
+
+  const colors = k.effect === 'off' ? Array(4).fill('#15141a') : k.followMode && mode ? Array(4).fill(draft.palette[mode].primary) : k.zones;
+  const zones = el.preview.querySelector('.zones');
+  zones.style.opacity = 0.3 + (0.7 * k.brightness) / 100;
+  [...zones.children].forEach((d, i) => { d.style.background = colors[i]; d.style.color = colors[i]; });
+  el.preview.querySelector('.info').textContent = `${FX[k.effect]} · ${k.brightness}%`;
+
   el.root.querySelectorAll('input[data-mode]').forEach((inp) => {
-    if (document.activeElement !== inp) inp.value = draft.palette[inp.dataset.mode][inp.dataset.which];
+    const v = draft.palette[inp.dataset.mode][inp.dataset.which];
+    if (document.activeElement !== inp) inp.value = v;
+    inp.parentElement.style.background = v;
   });
 }

@@ -7,29 +7,43 @@
   <link rel="stylesheet" href="css/anim.css">
 </head>
 <body>
+  <div class="bg bg-tint"></div>
+  <div class="bg bg-grid"></div>
+  <div class="bg bg-vignette"></div>
+
   <header class="top" data-tauri-drag-region>
-    <div class="logo" data-tauri-drag-region></div>
+    <div class="top-accent"></div>
+    <div class="brand" data-tauri-drag-region>
+      <div class="logo"></div>
+      <div class="wordmark">NITRO<span>CONTROL</span></div>
+    </div>
     <nav id="tabs">
       <button data-tab="home" class="on">Início</button>
-      <button data-tab="perf">Desempenho</button>
       <button data-tab="keyboard">Teclado</button>
       <button data-tab="monitor">Monitor</button>
       <button data-tab="system">Sistema</button>
     </nav>
-    <div class="sp" data-tauri-drag-region></div>
-    <div id="conn" class="conn"></div>
-    <button class="win" id="btn-min" title="Minimizar">—</button>
-    <button class="win" id="btn-close" title="Fechar (continua na barra)">✕</button>
+    <div class="top-right" data-tauri-drag-region>
+      <div id="conn" class="conn"></div>
+      <div class="hdr-temps"><span>CPU <b id="hdr-cpu">—</b></span><span>GPU <b id="hdr-gpu">—</b></span></div>
+      <div style="display:flex">
+        <button class="win" id="btn-min" title="Minimizar">—</button>
+        <button class="win" id="btn-close" title="Fechar (continua na barra)">✕</button>
+      </div>
+    </div>
   </header>
+
   <main>
     <section id="tab-home" class="tab on"></section>
-    <section id="tab-perf" class="tab"></section>
     <section id="tab-keyboard" class="tab"></section>
     <section id="tab-monitor" class="tab"></section>
     <section id="tab-system" class="tab"></section>
   </main>
-  <div id="flash" class="flash"></div>
-  <div id="banner" class="banner"></div>
+
+  <div class="fx fx-dim"></div>
+  <div class="fx fx-bloom"></div>
+  <div class="fx fx-scan"></div>
+  <div class="fx fx-ghost" id="ghost"></div>
   <div id="toasts"></div>
   <script type="module" src="js/app.js"></script>
 </body>
