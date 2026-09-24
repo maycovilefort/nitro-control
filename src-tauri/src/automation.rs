@@ -35,14 +35,25 @@ pub fn lighting_plan(device: &str, kb: &KeyboardConfig, palette: &Palette, mode:
         Effect::Neon => ("NEON", kb.speed.min(9)),
         _ => ("BREATHING", 0),
     };
-    let static_effect = (kb.effect == Effect::Static).then(|| {
-        let (r, g, bl) = rgb(&color);
-        format!("0,0,{b},0,{r},{g},{bl}")
-    });
+    let (lr, lg, lb) = led_color(&color, kb);
+    let static_effect = (kb.effect == Effect::Static).then(|| format!("0,0,{b},0,{lr},{lg},{lb}"));
     LightingPlan {
-        commands: vec![format!("LIGHTING APPLY {device} {mode_token} {b} {speed} {} -", hex(&color))],
+        commands: vec![format!("LIGHTING APPLY {device} {mode_token} {b} {speed} {lr:02x}{lg:02x}{lb:02x} -")],
         static_effect,
     }
+}
+
+/// Cor que o teclado deve receber para parecer com a cor da tela.
+pub fn led_color(color: &str, kb: &KeyboardConfig) -> (u8, u8, u8) {
+    let (r, g, b) = rgb(color);
+    let ch = |c: u8, gain: u8| -> u8 {
+        let mut v = c as f64 / 255.0;
+        if kb.gamma {
+            v = v.powf(2.2);
+        }
+        (v * 255.0 * gain.min(100) as f64 / 100.0).round() as u8
+    };
+    (ch(r, kb.balance[0]), ch(g, kb.balance[1]), ch(b, kb.balance[2]))
 }
 
 pub fn login_commands(login: &LoginConfig) -> Vec<String> {
@@ -67,7 +78,7 @@ mod tests {
     fn static_paints_with_breathing_then_commits_static_effect() {
         // Neste modelo o daemon não consegue gravar zonas (STATIC falha); a respiração
         // pinta as 4 zonas e o efeito estático é gravado direto no driver.
-        let p = plan(&KeyboardConfig::default(), Some(Mode::Turbo));
+        let p = plan(&raw(), Some(Mode::Turbo));
         // Sem "LIGHTING POWER ON": o APPLY já liga o teclado, e o POWER ON é
         // recusado pelo driver depois que o estático foi gravado direto.
         assert_eq!(p.commands, vec!["LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -".to_string()]);
@@ -76,7 +87,7 @@ mod tests {
 
     #[test]
     fn manual_color_uses_first_zone() {
-        let kb = KeyboardConfig { follow_mode: false, brightness: 60, ..Default::default() };
+        let kb = KeyboardConfig { follow_mode: false, brightness: 60, ..raw() };
         let p = plan(&kb, Some(Mode::Eco));
         assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 60 0 ff2a1a -");
         assert_eq!(p.static_effect.as_deref(), Some("0,0,60,0,255,42,26"));
@@ -84,7 +95,7 @@ mod tests {
 
     #[test]
     fn breathing_forces_speed_zero_and_has_no_static_step() {
-        let kb = KeyboardConfig { effect: Effect::Breathing, speed: 5, ..Default::default() };
+        let kb = KeyboardConfig { effect: Effect::Breathing, speed: 5, ..raw() };
         let p = plan(&kb, Some(Mode::Turbo));
         assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -");
         assert_eq!(p.static_effect, None);
@@ -92,7 +103,7 @@ mod tests {
 
     #[test]
     fn neon_keeps_speed() {
-        let kb = KeyboardConfig { effect: Effect::Neon, speed: 5, ..Default::default() };
+        let kb = KeyboardConfig { effect: Effect::Neon, speed: 5, ..raw() };
         let p = plan(&kb, Some(Mode::Turbo));
         assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard NEON 100 5 b026ff -");
         assert_eq!(p.static_effect, None);
@@ -109,6 +120,38 @@ mod tests {
     #[test]
     fn unknown_mode_does_not_touch_keyboard() {
         assert_eq!(plan(&KeyboardConfig::default(), None), LightingPlan::default());
+    }
+
+    fn raw() -> KeyboardConfig {
+        KeyboardConfig { gamma: false, ..Default::default() }
+    }
+
+    #[test]
+    fn gamma_off_and_full_balance_keep_screen_color() {
+        assert_eq!(led_color("#22c55e", &raw()), (0x22, 0xc5, 0x5e));
+    }
+
+    #[test]
+    fn gamma_makes_leds_match_the_screen() {
+        let kb = KeyboardConfig::default();
+        assert!(kb.gamma, "gamma ligado por padrão");
+        assert_eq!(led_color("#22c55e", &kb), (3, 145, 28));
+        assert_eq!(led_color("#ff8a1f", &kb), (255, 66, 2));
+        assert_eq!(led_color("#000000", &kb), (0, 0, 0));
+        assert_eq!(led_color("#ffffff", &kb), (255, 255, 255));
+    }
+
+    #[test]
+    fn balance_scales_each_channel() {
+        let kb = KeyboardConfig { balance: [100, 50, 100], ..Default::default() };
+        assert_eq!(led_color("#ff8a1f", &kb), (255, 33, 2));
+    }
+
+    #[test]
+    fn plan_uses_corrected_color() {
+        let p = plan(&KeyboardConfig::default(), Some(Mode::Turbo));
+        assert_eq!(p.commands[0], "LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 7104ff -");
+        assert_eq!(p.static_effect.as_deref(), Some("0,0,100,0,113,4,255"));
     }
 
     #[test]

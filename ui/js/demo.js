@@ -11,7 +11,7 @@ export function demoApi() {
       performance: { primary: '#ff2a1a', secondary: '#ff6a2b' },
       turbo: { primary: '#b026ff', secondary: '#ff3df2' },
     },
-    keyboard: { followMode: true, effect: 'static', brightness: 100, speed: 5, zones: ['#ff2a1a', '#ff2a1a', '#ff8a1f', '#ff8a1f'] },
+    keyboard: { followMode: true, effect: 'static', brightness: 100, speed: 5, zones: ['#ff2a1a', '#ff2a1a', '#ff8a1f', '#ff8a1f'], gamma: true, balance: [100, 100, 100] },
     login: { apply: true, mode: 'turbo', fan: 'auto' },
   };
   const target = { eco: 2600, quiet: 3000, balanced: 3800, performance: 4800, turbo: 5600 };

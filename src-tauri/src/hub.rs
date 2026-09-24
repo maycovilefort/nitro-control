@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(hub.snapshot().connection, Connection::Connected);
         let pos = |s: &str| c.iter().position(|x| x == s).unwrap_or_else(|| panic!("faltou {s} em {c:?}"));
         assert!(pos("PROFILE performance") < pos("FAN AUTO"));
-        assert!(pos("FAN AUTO") < pos("LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 ff8a1f -"), "cor do Equilibrado (modo lido do sysfs)");
+        assert!(pos("FAN AUTO") < pos("LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 ff4202 -"), "cor do Equilibrado (modo lido do sysfs)");
         assert_eq!(hub.snapshot().platform.as_ref().unwrap().usb_charging, Some(30));
     }
 
@@ -328,7 +328,7 @@ mod tests {
         set_profile_file(r.dir.path(), "performance\n");
         hub.tick(t0 + TICK);
         assert!(r.events.lock().unwrap().contains(&Event::ModeChanged { from: Some(Mode::Balanced), to: Mode::Turbo }));
-        assert!(cmds(&r).contains(&"LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 b026ff -".to_string()));
+        assert!(cmds(&r).contains(&"LIGHTING APPLY zoned-wmi-keyboard BREATHING 100 0 7104ff -".to_string()));
     }
 
     #[test]
@@ -409,7 +409,7 @@ mod tests {
         std::fs::write(&effect, "").unwrap();
         let mut hub = hub.with_effect_path(Some(effect.clone()));
         hub.tick(Instant::now());
-        assert_eq!(std::fs::read_to_string(&effect).unwrap(), "0,0,100,0,255,138,31", "estático laranja do Equilibrado");
+        assert_eq!(std::fs::read_to_string(&effect).unwrap(), "0,0,100,0,255,66,2", "estático laranja do Equilibrado, com gamma");
     }
 
     #[test]

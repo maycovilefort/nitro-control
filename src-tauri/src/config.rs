@@ -102,6 +102,10 @@ pub struct KeyboardConfig {
     pub brightness: u8,
     pub speed: u8,
     pub zones: [String; 4],
+    /// Correção de gamma: LEDs respondem de forma linear, a tela não.
+    pub gamma: bool,
+    /// Ganho de cada canal (R, G, B) em %, para igualar o teclado à tela.
+    pub balance: [u8; 3],
 }
 
 impl Default for KeyboardConfig {
@@ -112,6 +116,8 @@ impl Default for KeyboardConfig {
             brightness: 100,
             speed: 5,
             zones: ["#ff2a1a".into(), "#ff2a1a".into(), "#ff8a1f".into(), "#ff8a1f".into()],
+            gamma: true,
+            balance: [100, 100, 100],
         }
     }
 }
@@ -148,6 +154,9 @@ impl Config {
         let kd = KeyboardConfig::default();
         self.keyboard.brightness = self.keyboard.brightness.min(100);
         self.keyboard.speed = self.keyboard.speed.min(9);
+        for g in &mut self.keyboard.balance {
+            *g = (*g).min(100);
+        }
         for (z, d) in self.keyboard.zones.iter_mut().zip(kd.zones.iter()) {
             if !is_hex_color(z) {
                 *z = d.clone();
@@ -263,6 +272,14 @@ mod tests {
         assert_eq!(c.keyboard.zones[1], "#00ff00");
         assert_eq!(c.keyboard.zones[2], KeyboardConfig::default().zones[2]);
         assert_eq!(c.palette.turbo.primary, "#b026ff");
+    }
+
+    #[test]
+    fn sanitize_clamps_balance() {
+        let mut c = Config::default();
+        c.keyboard.balance = [250, 80, 100];
+        c.sanitize();
+        assert_eq!(c.keyboard.balance, [100, 80, 100]);
     }
 
     #[test]

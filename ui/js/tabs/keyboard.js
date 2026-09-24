@@ -41,6 +41,13 @@ export function mount(root, ctx) {
       <div class="kbrow inline" data-row="follow"><span>Acompanhar a cor do modo</span></div>
       <div class="kbrow inline fixrow"><span>Cor fixa<span class="sub">Teclado inteiro, com “Acompanhar” desligado</span></span>
         <label class="fixed"><input type="color" class="swatch-in" data-fixed></label></div>
+      <div class="kbrow inline" data-row="gamma"><span>Correção de cor<span class="sub">Deixa as cores do teclado parecidas com as da tela</span></span></div>
+      <div class="kbrow"><div class="hd"><span>Balanço do teclado</span><span data-v="balance"></span></div>
+        <div class="balance">
+          <label><span style="color:#ff5a5a">R</span><input type="range" min="0" max="100" data-bal="0"></label>
+          <label><span style="color:#5aff8a">G</span><input type="range" min="0" max="100" data-bal="1"></label>
+          <label><span style="color:#5aa8ff">B</span><input type="range" min="0" max="100" data-bal="2"></label>
+        </div></div>
     </div>
   </div>`;
 
@@ -51,6 +58,10 @@ export function mount(root, ctx) {
     r.addEventListener('input', () => { draft.keyboard[r.dataset.k] = Number(r.value); changed(); }));
   el.follow = sw((on) => { draft.keyboard.followMode = on; changed(); });
   root.querySelector('[data-row=follow]').append(el.follow);
+  el.gamma = sw((on) => { draft.keyboard.gamma = on; changed(); });
+  root.querySelector('[data-row=gamma]').append(el.gamma);
+  root.querySelectorAll('input[data-bal]').forEach((r) =>
+    r.addEventListener('input', () => { draft.keyboard.balance[Number(r.dataset.bal)] = Number(r.value); changed(); }));
   el.fixedRow = root.querySelector('.fixrow');
   el.fixed = root.querySelector('[data-fixed]');
   el.fixed.addEventListener('input', () => { draft.keyboard.zones = Array(4).fill(el.fixed.value); changed(); });
@@ -85,6 +96,11 @@ export function update({ store }) {
   }
   el.root.querySelector('[data-row=speed]').classList.toggle('dimmed', k.effect !== 'neon');
   setSw(el.follow, k.followMode);
+  setSw(el.gamma, k.gamma);
+  el.root.querySelectorAll('input[data-bal]').forEach((r) => {
+    if (document.activeElement !== r) r.value = k.balance[Number(r.dataset.bal)];
+  });
+  el.root.querySelector('[data-v=balance]').textContent = k.balance.join(' · ');
   el.fixedRow.classList.toggle('dimmed', k.followMode);
   if (document.activeElement !== el.fixed) el.fixed.value = k.zones[0];
   el.fixed.parentElement.style.background = k.zones[0];
