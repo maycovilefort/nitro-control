@@ -1,5 +1,6 @@
 pub mod asense;
 pub mod mode;
+pub mod sensors;
 
 use tauri::Manager;
 
