@@ -44,6 +44,8 @@ pub struct Sensors {
     proc_root: PathBuf,
     prev_cpu: Option<(u64, u64)>,
     gpu: Box<dyn FnMut() -> Option<GpuReading> + Send>,
+    detailed: bool,
+    last_gpu: Option<(std::time::Instant, Option<GpuReading>)>,
 }
 
 fn read_num(p: &Path) -> Option<f64> {
@@ -77,22 +79,48 @@ pub fn parse_nvidia_smi(out: &str) -> Option<GpuReading> {
 }
 
 fn nvidia_smi() -> Option<GpuReading> {
-    let out = Command::new("nvidia-smi")
-        .args([
+    let out = run_with_timeout(
+        Command::new("nvidia-smi").args([
             "--query-gpu=temperature.gpu,utilization.gpu,clocks.gr,power.draw",
             "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()?;
+        ]),
+        std::time::Duration::from_secs(2),
+    )?;
     if !out.status.success() {
         return None;
     }
     parse_nvidia_smi(&String::from_utf8_lossy(&out.stdout))
 }
 
+/// Intervalo mínimo entre consultas ao nvidia-smi.
+pub const GPU_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Roda um comando e o mata se passar do limite (um nvidia-smi travado não pode travar o hub).
+pub fn run_with_timeout(cmd: &mut Command, limit: std::time::Duration) -> Option<std::process::Output> {
+    use std::process::Stdio;
+    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) if start.elapsed() < limit => std::thread::sleep(std::time::Duration::from_millis(10)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
 impl Sensors {
+    /// Com a janela escondida só a temperatura (hwmon) interessa: não consulta o nvidia-smi.
+    pub fn set_detailed(&mut self, on: bool) {
+        self.detailed = on;
+    }
+
     pub fn new(sys: PathBuf, proc_root: PathBuf, gpu: Box<dyn FnMut() -> Option<GpuReading> + Send>) -> Self {
-        Sensors { sys, proc_root, prev_cpu: None, gpu }
+        Sensors { sys, proc_root, prev_cpu: None, gpu, detailed: true, last_gpu: None }
     }
 
     pub fn system() -> Self {
@@ -149,13 +177,35 @@ impl Sensors {
     }
 
     pub fn read(&mut self) -> SensorReading {
+        self.read_at(std::time::Instant::now())
+    }
+
+    fn active_gpu(&mut self, now: std::time::Instant, acer: &Option<PathBuf>) -> GpuStatus {
+        if !self.detailed {
+            return GpuStatus::Active(GpuReading { temp: temp(acer, "temp2_input"), ..Default::default() });
+        }
+        let fresh = self.last_gpu.as_ref().is_some_and(|(t, _)| now.saturating_duration_since(*t) < GPU_EVERY);
+        if !fresh {
+            let r = (self.gpu)();
+            self.last_gpu = Some((now, r));
+        }
+        match self.last_gpu.as_ref().and_then(|(_, r)| r.clone()) {
+            Some(g) => GpuStatus::Active(g),
+            None => GpuStatus::Absent,
+        }
+    }
+
+    pub fn read_at(&mut self, now: std::time::Instant) -> SensorReading {
         let acer = find_hwmon(&self.sys, "acer");
         let core = find_hwmon(&self.sys, "coretemp");
         let acpi = find_hwmon(&self.sys, "acpitz");
         let nvme = find_hwmon(&self.sys, "nvme");
         let gpu = match self.gpu_active() {
-            Some(true) => (self.gpu)().map(GpuStatus::Active).unwrap_or(GpuStatus::Absent),
-            Some(false) => GpuStatus::Sleeping,
+            Some(true) => self.active_gpu(now, &acer),
+            Some(false) => {
+                self.last_gpu = None;
+                GpuStatus::Sleeping
+            }
             None => GpuStatus::Absent,
         };
         let gpu_temp = match &gpu {
@@ -320,6 +370,51 @@ mod tests {
         let r = s.read();
         assert_eq!(r, SensorReading::default());
         assert_eq!(s.read_mode(), None);
+    }
+
+    fn counting(calls: &Arc<AtomicUsize>) -> Box<dyn FnMut() -> Option<GpuReading> + Send> {
+        let c = calls.clone();
+        Box::new(move || {
+            c.fetch_add(1, Ordering::SeqCst);
+            parse_nvidia_smi("43, 12, 1740, 62.5")
+        })
+    }
+
+    #[test]
+    fn gpu_query_is_throttled_and_cached() {
+        // Consultar o nvidia-smi a cada segundo zera o timer de ociosidade da NVIDIA
+        // e impede a GPU de voltar a dormir.
+        let d = fake_tree();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut s = sensors(&d, counting(&calls));
+        let t0 = std::time::Instant::now();
+        assert!(matches!(s.read_at(t0).gpu, GpuStatus::Active(_)));
+        assert!(matches!(s.read_at(t0 + std::time::Duration::from_secs(1)).gpu, GpuStatus::Active(ref g) if g.clock_mhz == Some(1740.0)), "usa o valor em cache");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        s.read_at(t0 + GPU_EVERY);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn hidden_window_reads_gpu_temp_from_hwmon_only() {
+        let d = fake_tree();
+        w(&d.path().join("sys"), "class/hwmon/hwmon7/temp2_input", "49000\n");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut s = sensors(&d, counting(&calls));
+        s.set_detailed(false);
+        let r = s.read();
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "janela escondida não chama nvidia-smi");
+        assert_eq!(r.gpu_temp, Some(49.0));
+        assert!(matches!(r.gpu, GpuStatus::Active(ref g) if g.temp == Some(49.0) && g.usage.is_none()));
+    }
+
+    #[test]
+    fn slow_command_times_out() {
+        let t = std::time::Instant::now();
+        assert!(run_with_timeout(Command::new("sleep").arg("5"), std::time::Duration::from_millis(200)).is_none());
+        assert!(t.elapsed() < std::time::Duration::from_secs(2));
+        let out = run_with_timeout(Command::new("echo").arg("oi"), std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "oi");
     }
 
     #[test]

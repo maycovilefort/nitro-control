@@ -131,7 +131,10 @@ pub fn run() {
                 history.clone(),
                 emit,
             )
-            .with_effect_path(Some(KBD_EFFECT.into()).filter(|p: &std::path::PathBuf| p.exists()));
+            .with_effect_path(Some(KBD_EFFECT.into()).filter(|p: &std::path::PathBuf| p.exists()))
+            // Padrões do login só quando aberto pelo autostart, não ao reabrir à mão.
+            .with_login_defaults(start_hidden)
+            .with_visibility(visible.clone());
             let shared2 = shared.clone();
             std::thread::Builder::new().name("hub".into()).spawn(move || hub::run(hub, rx, shared2))?;
 

@@ -93,3 +93,12 @@ export function sparkPath(values, w, h, min, max) {
   });
   return d;
 }
+
+/**
+ * Com a janela escondida a interface não recebe amostras; ao voltar, um buraco
+ * maior que 3 s indica que o histórico local está velho e deve vir do backend.
+ */
+export function needsHistoryRefetch(hist, nowSec) {
+  const last = hist.at(-1);
+  return !last || nowSec - last.t > 3;
+}

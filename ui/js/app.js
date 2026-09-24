@@ -1,5 +1,5 @@
 import { api, isDemo } from './api.js';
-import { themeVars, modeLabel, fmtTemp } from './logic.js';
+import { themeVars, modeLabel, fmtTemp, needsHistoryRefetch } from './logic.js';
 import { spinFans } from './widgets.js';
 import * as home from './tabs/home.js';
 import * as keyboard from './tabs/keyboard.js';
@@ -102,9 +102,14 @@ async function main() {
   applyTheme(store.snap.mode ?? 'balanced');
   render();
   spinFans(!document.hidden);
-  api.on('snapshot', (s) => {
+  api.on('snapshot', async (s) => {
     store.snap = s;
-    pushSample(s);
+    if (needsHistoryRefetch(store.hist, Math.floor(Date.now() / 1000))) {
+      store.hist = (await api.getHistory()).slice(-300);
+      lastSampleT = Math.floor(store.hist.at(-1)?.t ?? 0);
+    } else {
+      pushSample(s);
+    }
     render();
   });
   api.on('mode-changed', ({ from, to }) => {

@@ -14,6 +14,8 @@ use crate::state::{diff, Connection, Event, History, Sample, Snapshot};
 pub const TICK: Duration = Duration::from_secs(1);
 const DIAG_EVERY: Duration = Duration::from_secs(3);
 const RECONNECT_EVERY: Duration = Duration::from_secs(2);
+/// Os padrões do login só valem se a primeira conexão vier logo após o início.
+const LOGIN_WINDOW: Duration = Duration::from_secs(120);
 const DEFAULT_DEVICE: &str = "zoned-wmi-keyboard";
 
 pub enum Request {
@@ -40,6 +42,9 @@ pub struct Hub<A: Asense> {
     login_applied: bool,
     effect_path: Option<PathBuf>,
     effect_warned: bool,
+    login_enabled: bool,
+    started: Instant,
+    visible: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<A: Asense> Hub<A> {
@@ -58,7 +63,22 @@ impl<A: Asense> Hub<A> {
             login_applied: false,
             effect_path: None,
             effect_warned: false,
+            login_enabled: true,
+            started: Instant::now(),
+            visible: None,
         }
+    }
+
+    /// Janela visível? Escondida, os sensores não consultam o nvidia-smi.
+    pub fn with_visibility(mut self, v: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.visible = Some(v);
+        self
+    }
+
+    /// Padrões do login só no autostart (`--hidden`).
+    pub fn with_login_defaults(mut self, on: bool) -> Self {
+        self.login_enabled = on;
+        self
     }
 
     /// Arquivo `asense_rgb/effect`, usado para fixar o efeito estático.
@@ -88,7 +108,7 @@ impl<A: Asense> Hub<A> {
         match self.asense.connect() {
             Ok(()) => {
                 self.snap.connection = Connection::Connected;
-                self.on_connected();
+                self.on_connected(now);
             }
             Err(AsenseError::Busy) => self.snap.connection = Connection::Busy,
             Err(e) => {
@@ -98,7 +118,7 @@ impl<A: Asense> Hub<A> {
         }
     }
 
-    fn on_connected(&mut self) {
+    fn on_connected(&mut self, now: Instant) {
         if let Ok(caps) = self.asense.request("CAPS") {
             if let Some(dev) = parse_caps_device(&caps) {
                 self.device = dev;
@@ -107,7 +127,8 @@ impl<A: Asense> Hub<A> {
         self.refresh_platform();
         if !self.login_applied {
             self.login_applied = true;
-            let cmds = login_commands(&self.cfg.lock().unwrap().login);
+            let in_window = now.saturating_duration_since(self.started) <= LOGIN_WINDOW;
+            let cmds = if self.login_enabled && in_window { login_commands(&self.cfg.lock().unwrap().login) } else { Vec::new() };
             for c in cmds {
                 if let Err(e) = self.asense.request(&c) {
                     self.toast(format!("Padrão do login falhou ({c}): {e}"));
@@ -171,7 +192,10 @@ impl<A: Asense> Hub<A> {
         if !self.asense.connected() && self.snap.connection == Connection::Connected {
             self.snap.connection = Connection::Disconnected;
         }
-        self.snap.sensors = self.sensors.read();
+        if let Some(v) = &self.visible {
+            self.sensors.set_detailed(v.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        self.snap.sensors = self.sensors.read_at(now);
         self.refresh_diag(now);
         self.snap.mode = self.sensors.read_mode().or(self.diag_mode).or(prev.mode);
         let t = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -377,6 +401,22 @@ mod tests {
     }
 
     #[test]
+    fn manual_launch_does_not_apply_login_defaults() {
+        let (r, hub) = rig(Fake::default());
+        let mut hub = hub.with_login_defaults(false);
+        hub.tick(Instant::now());
+        assert!(!cmds(&r).contains(&"PROFILE performance".to_string()), "abrir o app à mão não força Turbo");
+    }
+
+    #[test]
+    fn late_first_connection_skips_login_defaults() {
+        // ASense GUI aberta no login (Busy) e fechada muito depois: não trocar o modo no meio da sessão.
+        let (r, mut hub) = rig(Fake::default());
+        hub.tick(Instant::now() + Duration::from_secs(600));
+        assert!(!cmds(&r).contains(&"PROFILE performance".to_string()));
+    }
+
+    #[test]
     fn busy_daemon_sets_busy_and_keeps_sensors() {
         let (r, mut hub) = rig(Fake { busy: true, ..Default::default() });
         hub.tick(Instant::now());
@@ -418,6 +458,32 @@ mod tests {
         let mut hub = hub.with_effect_path(Some(r.dir.path().join("nao-existe/effect")));
         hub.tick(Instant::now());
         assert!(!r.events.lock().unwrap().iter().any(|e| matches!(e, Event::Toast(_))));
+    }
+
+    #[test]
+    fn hidden_window_does_not_query_gpu_details() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        set_profile_file(dir.path(), "balanced\n");
+        for (f, v) in [("vendor", "0x10de"), ("class", "0x030000"), ("power/runtime_status", "active")] {
+            let p = dir.path().join("sys/bus/pci/devices/0000:01:00.0").join(f);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, v).unwrap();
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let c2 = calls.clone();
+        let sensors = Sensors::new(dir.path().join("sys"), dir.path().join("proc"), Box::new(move || {
+            c2.fetch_add(1, Ordering::SeqCst);
+            None
+        }));
+        let visible = Arc::new(AtomicBool::new(false));
+        let mut hub = Hub::new(Fake::default(), sensors, Arc::new(Mutex::new(Config::default())), Arc::new(Mutex::new(History::new(10))), Box::new(|_| {}))
+            .with_visibility(visible.clone());
+        hub.tick(Instant::now());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        visible.store(true, Ordering::SeqCst);
+        hub.tick(Instant::now() + Duration::from_secs(10));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]

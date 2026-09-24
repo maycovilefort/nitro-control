@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modeLabel, modeDesc, fmtTemp, fmtRpm, fmtPct, fanSpinSeconds, pct, hexToRgb, mix, themeVars, isHex, sparkPath, fanArcDash, dialDash, dialPoint, nextModeId, FAN_MAX_RPM } from '../ui/js/logic.js';
+import { modeLabel, modeDesc, fmtTemp, fmtRpm, fmtPct, fanSpinSeconds, pct, hexToRgb, mix, themeVars, isHex, sparkPath, fanArcDash, dialDash, dialPoint, nextModeId, needsHistoryRefetch, FAN_MAX_RPM } from '../ui/js/logic.js';
 
 test('rótulos dos modos', () => {
   assert.equal(modeLabel('turbo'), 'Turbo');
@@ -79,4 +79,11 @@ test('sparkPath ignora buracos', () => {
   assert.equal(sparkPath([], 100, 10, 0, 10), '');
   assert.equal(sparkPath([0, 10], 100, 10, 0, 10), 'M0.0,10.0 L100.0,0.0');
   assert.equal(sparkPath([0, null, 10], 100, 10, 0, 10), 'M0.0,10.0 M100.0,0.0');
+});
+
+test('histórico é rebuscado quando há buraco (janela ficou escondida)', () => {
+  assert.equal(needsHistoryRefetch([], 100), true);
+  assert.equal(needsHistoryRefetch([{ t: 99 }], 100), false);
+  assert.equal(needsHistoryRefetch([{ t: 97 }], 100), false);
+  assert.equal(needsHistoryRefetch([{ t: 90 }], 100), true);
 });
