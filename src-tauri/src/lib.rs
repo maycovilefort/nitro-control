@@ -3,6 +3,7 @@ pub mod autostart;
 pub mod config;
 pub mod mode;
 pub mod sensors;
+pub mod state;
 
 use tauri::Manager;
 
