@@ -1,3 +1,4 @@
 src-tauri/target/
 .superpowers/
 src-tauri/gen/
+packaging/backup-*/
