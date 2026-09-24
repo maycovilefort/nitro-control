@@ -189,4 +189,6 @@ janela escondida e polimento do empacotamento.
 - Fontes [Saira e Saira Condensed](https://fonts.google.com/specimen/Saira) (SIL Open Font License 1.1).
 - Visual inspirado no NitroSense, recriado do zero em CSS/SVG, sem nenhum asset da Acer.
 
+Licença: [MIT](LICENSE). As fontes em `ui/fonts/` seguem a SIL Open Font License 1.1.
+
 <sub>Projeto pessoal, sem afiliação com a Acer. “Nitro” e “NitroSense” são marcas da Acer Inc.</sub>

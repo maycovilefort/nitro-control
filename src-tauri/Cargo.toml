@@ -3,6 +3,7 @@ name = "nitro-control"
 version = "0.1.0"
 edition = "2021"
 description = "Painel de controle estilo NitroSense para Acer Nitro"
+license = "MIT"
 
 [lib]
 name = "nitro_control_lib"
