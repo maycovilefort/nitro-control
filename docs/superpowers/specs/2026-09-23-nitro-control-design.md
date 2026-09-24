@@ -101,8 +101,9 @@ fala com o socket nem com o `/sys`.
 
 ### Ciclos
 
-- Sensores: a cada 1 s com a janela visível e a cada 2 s com ela escondida
-  (só o ícone consome).
+- Sensores: a cada 1 s (leitura barata: arquivos do `/sys` e um
+  `nvidia-smi` de ~35 ms, só com a GPU ativa). Com a janela escondida, nada é
+  enviado para ela; o ícone só é redesenhado quando o texto muda.
 - Modo: `/sys/firmware/acpi/platform_profile` a cada 1 s.
 - Modo da ventoinha (Auto/Máximo): `DIAG PASSIVE` a cada 3 s e logo após cada
   comando `FAN`.
